@@ -81,7 +81,7 @@ def update_report(sku, status, filename, size, archive_type):
     Append a new record to report.json with download results.
     Creates the file if it does not exist.
     """
-    report_path = Path("data") / "ProductImagePipeline Data" / "report.json"
+    report_path = Path("data") / "report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
@@ -140,7 +140,7 @@ def download_archive(url, sku):
     ua = UserAgent()
     random_ua = ua.random
 
-    target_dir = Path("data") / "ProductImagePipeline Data" / sku / "download"
+    target_dir = Path("data") / sku / "download"
     target_dir.mkdir(parents=True, exist_ok=True)
 
     filename = url.split("/")[-1]
@@ -188,7 +188,7 @@ def download_archive(url, sku):
 # =========================
 if __name__ == "__main__":
     # Reset report at the start of each run
-    report_path = Path("data") / "ProductImagePipeline Data" / "report.json"
+    report_path = Path("data") / "report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump([], f)
