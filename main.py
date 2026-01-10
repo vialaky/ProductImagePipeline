@@ -8,6 +8,8 @@ import sys
 import zipfile
 import tarfile
 from PIL import Image, ImageOps
+import shutil
+
 
 # =========================
 # Configuration dictionary
@@ -178,11 +180,16 @@ def extract_archive(sku, filepath, archive_type):
         update_report(sku, filepath.name, 0, archive_type, extract_status="failed")
 
 # =========================
-# Process one image
+# Find and process 10 images
 # =========================
-def process_one_image(sku, profile):
+def process_images(sku, profile, limit=10):
     """
-    Process one image from raw folder into a square 1:1 canvas.
+    Process up to `limit` images from the raw folder of a given SKU.
+    - Resize to square format
+    - Add background
+    - Save to 'processed' directory
+    - Update report with processed_count and process_status
+    - Delete raw folder after processing
     """
     raw_dir = Path("data") / sku / "raw"
     processed_dir = Path("data") / sku / "processed"
@@ -198,27 +205,46 @@ def process_one_image(sku, profile):
         update_report(sku, "", 0, "", process_status="failed")
         return
 
-    img_path = image_files[0]
-    logger.info(f"{sku}: processing image {img_path.name}")
+    count = 0
+    for img_path in image_files[:limit]:
+        try:
+            with Image.open(img_path) as img:
+                img = ImageOps.contain(img, profile["size"])
+                canvas = Image.new("RGB", profile["size"], profile["background"])
+                offset = ((profile["size"][0] - img.width) // 2,
+                          (profile["size"][1] - img.height) // 2)
+                canvas.paste(img, offset)
 
+                out_path = processed_dir / f"{img_path.stem}_processed.jpg"
+                canvas.save(out_path, "JPEG",
+                            quality=profile["quality"],
+                            progressive=profile["progressive"])
+                logger.info(f"{sku}: processed {img_path.name} → {out_path.name}")
+                count += 1
+        except Exception as e:
+            logger.error(f"{sku}: failed to process {img_path.name} → {e}")
+
+    # Update report after all processing
+    status = "processed" if count > 0 else "failed"
+    update_report(sku, "", 0, "", process_status=status)
+
+    # Add processed_count field
+    report_path = Path("data") / "report.json"
+    with open(report_path, "r+", encoding="utf-8") as f:
+        data = json.load(f)
+        for entry in data:
+            if entry["sku"] == sku:
+                entry["processed_count"] = count
+        f.seek(0)
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.truncate()
+
+    # Delete raw folder
     try:
-        with Image.open(img_path) as img:
-            img = ImageOps.contain(img, profile["size"])
-            canvas = Image.new("RGB", profile["size"], profile["background"])
-            offset = ((profile["size"][0] - img.width) // 2,
-                      (profile["size"][1] - img.height) // 2)
-            canvas.paste(img, offset)
-
-            out_path = processed_dir / f"{img_path.stem}_processed.jpg"
-            canvas.save(out_path, "JPEG",
-                        quality=profile["quality"],
-                        progressive=profile["progressive"])
-            logger.info(f"{sku}: saved processed image → {out_path.name}")
-            update_report(sku, img_path.name, 0, "", process_status="processed")
-
+        shutil.rmtree(raw_dir)
+        logger.info(f"{sku}: raw folder deleted after processing")
     except Exception as e:
-        logger.error(f"{sku}: failed to process {img_path.name} → {e}")
-        update_report(sku, img_path.name, 0, "", process_status="failed")
+        logger.error(f"{sku}: failed to delete raw folder → {e}")
 
 # =========================
 # Main entry point
@@ -239,7 +265,7 @@ if __name__ == "__main__":
         sku_name = item["sku"]
         filepath, archive_type = download_archive(download_url, sku_name)
         extract_archive(sku_name, filepath, archive_type)
-        process_one_image(sku_name, config["image_profile"])
+        process_images(sku_name, config["image_profile"], limit=10)
 
     logger.info("=== Run finished ===")
     logger.remove()
