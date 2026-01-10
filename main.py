@@ -3,6 +3,8 @@ from fake_useragent import UserAgent
 from pathlib import Path
 import json
 from datetime import datetime
+from loguru import logger
+import sys
 
 # =========================
 # Configuration dictionary
@@ -73,6 +75,16 @@ config = {
     ]
 }
 
+
+# =========================
+# Logging
+# =========================
+logger.add(sys.stdout, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}", level="INFO")
+logger.add(
+    "pipeline.log", format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}",
+    level="INFO", rotation="1 MB", retention="100 days")
+
+
 # =========================
 # Report function
 # =========================
@@ -129,14 +141,6 @@ def detect_archive_type(filepath: Path) -> str:
 # Download function
 # =========================
 def download_archive(url, sku):
-    """
-    Download archive for a given SKU.
-    - Creates target folder
-    - Skips if already downloaded (idempotency)
-    - Retries up to 3 times with timeout
-    - Logs INFO/ERROR messages
-    - Updates report.json with results
-    """
     ua = UserAgent()
     random_ua = ua.random
 
@@ -146,42 +150,52 @@ def download_archive(url, sku):
     filename = url.split("/")[-1]
     filepath = target_dir / filename
 
-    # Detect archive type
     archive_type = detect_archive_type(filepath)
 
     # Idempotency check
     if filepath.exists() and filepath.stat().st_size > 0:
-        print(f"INFO: {sku} already downloaded, skipping...")
+        logger.info(f"{sku}: already downloaded, skipping...")
         update_report(sku, "success", filename, filepath.stat().st_size, archive_type)
-        return
+        return filepath, archive_type   # всегда возвращаем кортеж
 
     # Retry loop
     for attempt in range(1, 4):
         try:
             response = requests.get(url, headers={'User-Agent': random_ua}, stream=True, timeout=30)
             if response.status_code == 200:
-                print(f"INFO: Start downloading {sku} → {filename} (attempt {attempt})...")
+                logger.info(f"{sku}: Start downloading {filename} (attempt {attempt})...")
                 with open(filepath, "wb") as f:
                     for chunk in response.iter_content(chunk_size=1048576):
                         if chunk:
                             f.write(chunk)
                 size = filepath.stat().st_size
                 if size > 0:
-                    print(f"INFO: Download {sku} complete, file size {size} bytes")
+                    logger.info(f"{sku}: Download complete, size {size} bytes")
                     update_report(sku, "success", filename, size, archive_type)
-                    return
+                    return filepath, archive_type   # возвращаем кортеж
                 else:
-                    print(f"ERROR {sku}: file is empty (attempt {attempt})")
+                    logger.error(f"{sku}: file is empty (attempt {attempt})")
                     update_report(sku, "failed", filename, 0, archive_type)
             else:
-                print(f"ERROR {sku}: HTTP {response.status_code} (attempt {attempt})")
+                logger.error(f"{sku}: HTTP {response.status_code} (attempt {attempt})")
                 update_report(sku, "failed", filename, 0, archive_type)
         except requests.exceptions.RequestException as e:
-            print(f"ERROR {sku}: network error {e} (attempt {attempt})")
+            logger.error(f"{sku}: network error {e} (attempt {attempt})")
             update_report(sku, "failed", filename, 0, archive_type)
 
-    print(f"ERROR {sku}: Failed to download file after 3 attempts")
+    logger.error(f"{sku}: Failed after 3 attempts")
     update_report(sku, "failed", filename, 0, archive_type)
+    return filepath, archive_type   # и здесь тоже
+
+def extract_archive(sku, filepath, archive_type):
+    raw_dir = Path("data") / sku / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    if True:
+        print(f"INFO: Extracting {sku} ready")
+    else:
+        print(f"INFO: Extracting {sku} failed")
+
+
 
 # =========================
 # Main entry point
@@ -194,7 +208,8 @@ if __name__ == "__main__":
         json.dump([], f)
 
     # Download archives with images
-    for sku in config['skus'][:3]:   # take first 3 for test
-        download_url = sku['source_url']
-        sku_name = sku["sku"]
-        download_archive(download_url, sku_name)
+    for item in config['skus'][:1]:
+        download_url = item['source_url']
+        sku_name = item["sku"]
+        filepath, archive_type = download_archive(download_url, sku_name)
+        extract_archive(sku_name, filepath, archive_type)
