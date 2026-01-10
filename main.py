@@ -239,6 +239,7 @@ if __name__ == "__main__":
         sku_name = item["sku"]
         filepath, archive_type = download_archive(download_url, sku_name)
         extract_archive(sku_name, filepath, archive_type)
-        process_images(sku_name, config["image_profile"], limit=10)
+        process_one_image(sku_name, config["image_profile"])
+
     logger.info("=== Run finished ===")
     logger.remove()
