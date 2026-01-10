@@ -7,6 +7,7 @@ from loguru import logger
 import sys
 import zipfile
 import tarfile
+from PIL import Image, ImageOps
 
 # =========================
 # Configuration dictionary
@@ -16,8 +17,8 @@ config = {
     "output_dir": "output",
     "logs_dir": "logs",
     "image_profile": {
-        "mode": "instagram_portrait",
-        "size": (1080, 1350),
+        "mode": "instagram_square",
+        "size": (1080, 1080),       # square format for Instagram
         "background": "white",
         "fit": "contain",
         "quality": 85,
@@ -35,24 +36,22 @@ config = {
 # =========================
 # Logging setup
 # =========================
-# Human-readable time format: YYYY-MM-DD HH:mm:ss
 logger.add(sys.stdout, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}", level="INFO")
 logger.add("pipeline.log", format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}", level="INFO", rotation="1 MB")
 
 # =========================
 # Report function
 # =========================
-def update_report(sku, filename, size, archive_type, download_status=None, extract_status=None):
+def update_report(sku, filename, size, archive_type,
+                  download_status=None, extract_status=None, process_status=None):
     """
-    Update report.json with both download and extract status in a single entry per SKU.
-    If the entry exists, update it; otherwise, create a new one.
+    Update report.json with statuses (download, extract, process) in a single entry per SKU.
     """
     report_path = Path("data") / "report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Read existing report
     if report_path.exists():
         try:
             with open(report_path, "r", encoding="utf-8") as f:
@@ -62,17 +61,16 @@ def update_report(sku, filename, size, archive_type, download_status=None, extra
     else:
         data = []
 
-    # Find existing entry for this SKU
     entry = next((item for item in data if item["sku"] == sku), None)
 
     if entry:
-        # Update existing entry
-        if download_status:
+        if download_status is not None:
             entry["download_status"] = download_status
-        if extract_status:
+        if extract_status is not None:
             entry["extract_status"] = extract_status
+        if process_status is not None:
+            entry["process_status"] = process_status
     else:
-        # Create new entry
         entry = {
             "time": now,
             "sku": sku,
@@ -80,11 +78,11 @@ def update_report(sku, filename, size, archive_type, download_status=None, extra
             "size": size,
             "archive type": archive_type,
             "download_status": download_status,
-            "extract_status": extract_status
+            "extract_status": extract_status,
+            "process_status": process_status
         }
         data.append(entry)
 
-    # Write back to JSON
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
@@ -92,10 +90,7 @@ def update_report(sku, filename, size, archive_type, download_status=None, extra
 # Archive type detection
 # =========================
 def detect_archive_type(filepath: Path) -> str:
-    """
-    Detect archive type based on file suffix.
-    """
-    suffixes = filepath.suffixes  # e.g., ['.tar', '.gz']
+    suffixes = filepath.suffixes
     if suffixes == ['.tar', '.gz']:
         return "targz"
     if filepath.suffix == '.tgz':
@@ -110,9 +105,6 @@ def detect_archive_type(filepath: Path) -> str:
 # Download function
 # =========================
 def download_archive(url, sku):
-    """
-    Download archive for a given SKU.
-    """
     ua = UserAgent()
     random_ua = ua.random
 
@@ -157,10 +149,6 @@ def download_archive(url, sku):
 # Extract function
 # =========================
 def extract_archive(sku, filepath, archive_type):
-    """
-    Extract archive into raw directory.
-    Supports ZIP and TAR/TAR.GZ/TGZ.
-    """
     raw_dir = Path("data") / sku / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
@@ -169,7 +157,6 @@ def extract_archive(sku, filepath, archive_type):
             logger.info(f"{sku}: extracting ZIP archive...")
             with zipfile.ZipFile(filepath, "r") as zf:
                 zf.extractall(raw_dir)
-
             files_count = sum(1 for _ in raw_dir.rglob("*") if _.is_file())
             logger.info(f"{sku}: extracted {files_count} files")
             update_report(sku, filepath.name, files_count, archive_type, extract_status="extracted_zip")
@@ -178,7 +165,6 @@ def extract_archive(sku, filepath, archive_type):
             logger.info(f"{sku}: extracting TAR archive...")
             with tarfile.open(filepath, "r:*") as tf:
                 tf.extractall(raw_dir)
-
             files_count = sum(1 for _ in raw_dir.rglob("*") if _.is_file())
             logger.info(f"{sku}: extracted {files_count} files")
             update_report(sku, filepath.name, files_count, archive_type, extract_status="extracted_tar")
@@ -192,10 +178,52 @@ def extract_archive(sku, filepath, archive_type):
         update_report(sku, filepath.name, 0, archive_type, extract_status="failed")
 
 # =========================
+# Process one image
+# =========================
+def process_one_image(sku, profile):
+    """
+    Process one image from raw folder into a square 1:1 canvas.
+    """
+    raw_dir = Path("data") / sku / "raw"
+    processed_dir = Path("data") / sku / "processed"
+    processed_dir.mkdir(parents=True, exist_ok=True)
+
+    image_files = []
+    image_files.extend(raw_dir.rglob("*.jpg"))
+    image_files.extend(raw_dir.rglob("*.jpeg"))
+    image_files.extend(raw_dir.rglob("*.png"))
+
+    if not image_files:
+        logger.error(f"{sku}: no images found in {raw_dir}")
+        update_report(sku, "", 0, "", process_status="failed")
+        return
+
+    img_path = image_files[0]
+    logger.info(f"{sku}: processing image {img_path.name}")
+
+    try:
+        with Image.open(img_path) as img:
+            img = ImageOps.contain(img, profile["size"])
+            canvas = Image.new("RGB", profile["size"], profile["background"])
+            offset = ((profile["size"][0] - img.width) // 2,
+                      (profile["size"][1] - img.height) // 2)
+            canvas.paste(img, offset)
+
+            out_path = processed_dir / f"{img_path.stem}_processed.jpg"
+            canvas.save(out_path, "JPEG",
+                        quality=profile["quality"],
+                        progressive=profile["progressive"])
+            logger.info(f"{sku}: saved processed image → {out_path.name}")
+            update_report(sku, img_path.name, 0, "", process_status="processed")
+
+    except Exception as e:
+        logger.error(f"{sku}: failed to process {img_path.name} → {e}")
+        update_report(sku, img_path.name, 0, "", process_status="failed")
+
+# =========================
 # Main entry point
 # =========================
 if __name__ == "__main__":
-    # Add a blank line and marker to separate runs in the log
     logger.info("")
     logger.info("=== New run started ===")
 
@@ -205,11 +233,12 @@ if __name__ == "__main__":
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump([], f)
 
-    # Process SKUs (limited to first one for testing)
+    # Process SKUs (limit to first for testing)
     for item in config['skus'][:1]:
         download_url = item['source_url']
         sku_name = item["sku"]
         filepath, archive_type = download_archive(download_url, sku_name)
         extract_archive(sku_name, filepath, archive_type)
+        process_images(sku_name, config["image_profile"], limit=10)
     logger.info("=== Run finished ===")
-    logger.remove()  # release handlers
+    logger.remove()
