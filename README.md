@@ -22,6 +22,13 @@ Install dependencies from `requirements.txt`:
 pip install -r requirements.txt
 ```
 
+Key packages:
+- requests
+- fake-useragent
+- loguru
+- Pillow
+- numpy
+
 ---
 
 ## 🚀 Usage
