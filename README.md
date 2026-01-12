@@ -20,3 +20,36 @@ Install dependencies from `requirements.txt`:
 
 ```bash
 pip install -r requirements.txt
+```
+
+---
+
+## ✨ Features
+
+---
+
+## 📦 Requirements
+
+---
+
+## 🚀 Usage
+git clone https://github.com/your-username/ProductImagePipeline.git
+cd ProductImagePipeline
+python main.py
+
+---
+
+## 📂 Project Structure
+
+---
+
+## 📝 Example Report Entry
+
+---
+
+## ⚖️ License
+
+---
+
+- ## 🤝 Contributing
+
