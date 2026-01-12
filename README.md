@@ -24,30 +24,52 @@ pip install -r requirements.txt
 
 ---
 
-## ✨ Features
-
----
-
-## 📦 Requirements
-
----
-
 ## 🚀 Usage
+Clone the repository and run the pipeline:
+```bash
 git clone https://github.com/your-username/ProductImagePipeline.git
 cd ProductImagePipeline
 python main.py
+```
 
 ---
 
 ## 📂 Project Structure
+ProductImagePipeline/
+├── main.py
+├── requirements.txt
+├── README.md
+├── data/
+├── logs/
+└── output/
 
 ---
 
 ## 📝 Example Report Entry
+```json
+{
+  "time": "2026-01-12 10:47:49",
+  "sku": "AAA-0001",
+  "filename": "master.zip",
+  "size": 90503,
+  "archive type": "zip",
+  "download_status": "success",
+  "extract_status": "extracted_zip",
+  "process_status": "processed",
+  "processed_count": 10
+}
+```
 
 ---
 
 ## ⚖️ License
+This project is licensed under the MIT License.
+See the LICENSE file for details.
+
+--- 
+
+🤝 Contributing
+Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
 
 ---
 
