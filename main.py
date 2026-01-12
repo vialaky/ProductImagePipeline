@@ -327,6 +327,7 @@ def _safe_delete_raw(sku, raw_dir: Path):
 # Main entry point
 # =========================
 if __name__ == "__main__":
+    """Entry point: run the pipeline for all configured SKUs."""
     logger.info("")
     logger.info("=== New run started ===")
 
