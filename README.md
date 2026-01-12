@@ -42,6 +42,7 @@ python main.py
 ---
 
 ## 📂 Project Structure
+```
 ProductImagePipeline/
 ├── main.py
 ├── requirements.txt
@@ -49,6 +50,7 @@ ProductImagePipeline/
 ├── data/
 ├── logs/
 └── output/
+```
 
 ---
 
